@@ -47,6 +47,22 @@ class Store:
         )
         return [r["link"] for r in cur.fetchall()]
 
+    def all_links_detailed(self) -> list[dict]:
+        cur = self.conn.execute(
+            "SELECT id, phone, activation_id, otp, logged_in, link, created_at "
+            "FROM hunts WHERE link IS NOT NULL AND link != '' "
+            "ORDER BY id DESC"
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def recent_hunts(self, limit: int = 50) -> list[dict]:
+        cur = self.conn.execute(
+            "SELECT id, phone, activation_id, otp, logged_in, link, created_at "
+            "FROM hunts ORDER BY id DESC LIMIT ?",
+            (limit,)
+        )
+        return [dict(r) for r in cur.fetchall()]
+
     def stats(self) -> dict:
         cur = self.conn.execute(
             "SELECT COUNT(*) n, SUM(logged_in) logins, "

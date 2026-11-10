@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🦁 JioFarm — Google AI Pro / Gemini Pro Link Hunter</title>
+  <meta name="description" content="Live Web Dashboard & Control Center for JioFarm. Panen link redeem Google AI Pro secara otomatis dari Jio selfcare.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="brand">
+        <span class="brand-icon">🦁</span>
+        <div>
+          <div class="brand-title">JioFarm</div>
+          <div class="brand-subtitle">Google AI Pro Hunter</div>
+        </div>
+      </div>
+
+      <nav class="nav-center">
+        <button class="nav-tab active" data-tab="overview">
+          <span>🎛️</span> Workers
+        </button>
+        <button class="nav-tab" data-tab="vault">
+          <span>🎯</span> Links Vault <span class="badge" id="links-count-badge">0</span>
+        </button>
+        <button class="nav-tab" data-tab="console">
+          <span>📜</span> Live Console
+        </button>
+        <button class="nav-tab" data-tab="history">
+          <span>⏱️</span> History
+        </button>
+        <button class="nav-tab" data-tab="settings">
+          <span>⚙️</span> Settings
+        </button>
+      </nav>
+
+      <div class="nav-actions">
+        <!-- Balance indicator -->
+        <div class="balance-pill" title="Saldo SMS Provider">
+          <span style="opacity: 0.6;" id="balance-provider">GRIZZLY</span>
+          <span id="balance-val">$0.00</span>
+          <button id="btn-refresh-balance" class="balance-refresh-btn" title="Refresh Saldo">
+            🔄
+          </button>
+        </div>
+
+        <!-- Master Status Badge -->
+        <div id="status-badge" class="status-pill idle">
+          <span class="status-dot"></span>
+          <span id="status-text">Idle</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Missing Config Warning Banner -->
+    <div id="config-warning-banner" class="glass" style="display: none; padding: 1rem 1.4rem; border-left: 4px solid var(--accent-gold); justify-content: space-between; align-items: center; background: rgba(245, 158, 11, 0.1);">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 1.3rem;">⚠️</span>
+        <div>
+          <div style="font-weight: 700; color: var(--accent-gold);">API Key Provider Belum Dikonfigurasi</div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">Masukkan API Key GrizzlySMS atau 5SIM di menu Settings untuk memulai perburuan link.</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="document.querySelector('[data-tab=settings]').click()">
+        Buka Settings →
+      </button>
+    </div>
+
+    <!-- Top KPI Metric Cards -->
+    <section class="kpi-grid">
+      <div class="kpi-card glass gold">
+        <div class="kpi-header">
+          <span>Link Google AI Pro</span>
+          <span class="kpi-icon">🎯</span>
+        </div>
+        <div class="kpi-value" id="kpi-links">0</div>
+        <div class="kpi-footer">
+          <span>Tersimpan di database</span>
+        </div>
+      </div>
+
+      <div class="kpi-card glass green">
+        <div class="kpi-header">
+          <span>Active Workers</span>
+          <span class="kpi-icon">⚡</span>
+        </div>
+        <div class="kpi-value" id="kpi-workers">0 / 2</div>
+        <div class="kpi-footer">
+          <span>Paralel threads berjalan</span>
+        </div>
+      </div>
+
+      <div class="kpi-card glass blue">
+        <div class="kpi-header">
+          <span>Total Attempt</span>
+          <span class="kpi-icon">📱</span>
+        </div>
+        <div class="kpi-value" id="kpi-attempts">0</div>
+        <div class="kpi-footer">
+          <span>Nomor disewa & diproses</span>
+        </div>
+      </div>
+
+      <div class="kpi-card glass purple">
+        <div class="kpi-header">
+          <span>Refund Pending</span>
+          <span class="kpi-icon">♻️</span>
+        </div>
+        <div class="kpi-value" id="kpi-refunds">0</div>
+        <div class="kpi-footer">
+          <span>Antrean auto-refund nomor gagal</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 1: OVERVIEW & WORKERS -->
+    <div id="tab-overview" class="tab-content">
+      <div class="panel-grid">
+
+        <!-- Left: Quick Launch Controls -->
+        <div class="control-panel glass">
+          <div class="panel-title">
+            <span>🚀</span> Control Center
+          </div>
+
+          <!-- Concurrency Setting -->
+          <div class="form-group">
+            <div class="form-label">
+              <span>Concurrency (Workers)</span>
+              <span id="ctrl-concurrency-val" class="val">2</span>
+            </div>
+            <input type="range" id="ctrl-concurrency" class="form-range" min="1" max="8" value="2" step="1">
+            <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim);">
+              <span>1 worker</span>
+              <span>8 workers</span>
+            </div>
+          </div>
+
+          <!-- Max Price Setting -->
+          <div class="form-group">
+            <div class="form-label">
+              <span>Max Price / Number</span>
+              <span id="ctrl-max-price-val" class="val">$0.50</span>
+            </div>
+            <input type="range" id="ctrl-max-price" class="form-range" min="0.10" max="2.00" value="0.50" step="0.05">
+            <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim);">
+              <span>$0.10 (Hemat)</span>
+              <span>$2.00 (Agresif)</span>
+            </div>
+          </div>
+
+          <!-- Target Mode Selection -->
+          <div class="form-group">
+            <label class="form-label">Target Berhenti</label>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="target-mode" value="unlimited" checked>
+                <span>Jalan terus (Stop manual)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="target-mode" value="links">
+                <span>Target Link</span>
+              </label>
+              <div id="opt-links" class="mode-options" style="display: none; padding-left: 1.5rem;">
+                <input type="number" id="target-links-input" class="form-input" min="1" max="100" value="3" placeholder="Contoh: 3 link">
+              </div>
+
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="target-mode" value="duration">
+                <span>Batas Durasi</span>
+              </label>
+              <div id="opt-duration" class="mode-options" style="display: none; padding-left: 1.5rem;">
+                <select id="target-duration-input" class="form-select">
+                  <option value="30">30 Menit</option>
+                  <option value="60" selected>1 Jam</option>
+                  <option value="120">2 Jam</option>
+                  <option value="360">6 Jam</option>
+                </select>
+              </div>
+
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="target-mode" value="count">
+                <span>Fixed Attempt</span>
+              </label>
+              <div id="opt-count" class="mode-options" style="display: none; padding-left: 1.5rem;">
+                <input type="number" id="target-count-input" class="form-input" min="1" max="100" value="5" placeholder="Contoh: 5 nomor">
+              </div>
+            </div>
+          </div>
+
+          <!-- Elapsed Timer -->
+          <div style="background: rgba(0, 0, 0, 0.4); padding: 0.75rem 1rem; border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--text-dim);">⏱ Durasi Sesi:</span>
+            <span id="elapsed-val" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-gold);">00:00</span>
+          </div>
+
+          <!-- Master Action Buttons -->
+          <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem;">
+            <button id="btn-start-hunt" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">
+              <span>🚀</span> Mulai Perburuan
+            </button>
+            <button id="btn-stop-hunt" class="btn btn-danger" style="width: 100%; padding: 0.75rem; display: none;">
+              <span>🛑</span> Stop Hunter
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Real-Time Worker Grid -->
+        <div class="workers-container">
+          <div class="section-header">
+            <div class="section-title">
+              <span>⚡</span> Live Workers Grid (<span id="workers-count-badge">0</span>)
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-dim);">
+              Status update otomatis secara real-time
+            </div>
+          </div>
+
+          <div id="workers-grid" class="workers-grid">
+            <!-- Dynamic Worker Cards rendered via JS -->
+            <div style="grid-column: 1 / -1; padding: 3rem; text-align: center; color: var(--text-dim);" class="glass">
+              <div style="font-size: 2rem; margin-bottom: 0.5rem;">💤</div>
+              <div>Belum ada worker berjalan. Atur parameter di samping dan klik <b>Mulai Perburuan</b>.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- TAB 2: HARVESTED LINKS VAULT -->
+    <div id="tab-vault" class="tab-content" style="display: none;">
+      <div class="vault-container glass" style="padding: 1.5rem;">
+        <div class="vault-toolbar">
+          <div class="section-title">
+            <span>🎯</span> Koleksi Link Redeem Google AI Pro
+          </div>
+
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-links" class="form-input" placeholder="Cari nomor HP atau URL link...">
+          </div>
+
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm" onclick="exportLinks('txt')">
+              📥 Export TXT
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="exportLinks('csv')">
+              📊 Export CSV
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="exportLinks('json')">
+              {} JSON
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="links-table">
+            <thead>
+              <tr>
+                <th style="width: 60px;">ID</th>
+                <th style="width: 150px;">Nomor Jio</th>
+                <th>Redeem URL (Google One / Gemini Pro)</th>
+                <th style="width: 160px;">Waktu Didapat</th>
+                <th style="width: 170px;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="links-table-body">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                  Memuat data link...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: LIVE CONSOLE LOGS -->
+    <div id="tab-console" class="tab-content" style="display: none;">
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="terminal-dot dot-red"></span>
+            <span class="terminal-dot dot-yellow"></span>
+            <span class="terminal-dot dot-green"></span>
+          </div>
+          <div class="terminal-title">jiofarm-live-stream.log</div>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <label style="font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+              <input type="checkbox" id="chk-autoscroll" checked>
+              <span>Auto-scroll</span>
+            </label>
+            <button id="btn-clear-logs" class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;">
+              Clear
+            </button>
+          </div>
+        </div>
+        <div id="terminal-logs" class="terminal-body">
+          <!-- Live log lines appended here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: HUNT HISTORY -->
+    <div id="tab-history" class="tab-content" style="display: none;">
+      <div class="glass" style="padding: 1.5rem;">
+        <div class="section-title" style="margin-bottom: 1rem;">
+          <span>⏱️</span> Riwayat Semua Percobaan (Recent Hunts)
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="links-table">
+            <thead>
+              <tr>
+                <th style="width: 60px;">ID</th>
+                <th style="width: 160px;">Nomor HP</th>
+                <th style="width: 130px;">Login Jio</th>
+                <th>Hasil Promo</th>
+                <th style="width: 180px;">Waktu</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                  Memuat riwayat...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: SETTINGS -->
+    <div id="tab-settings" class="tab-content" style="display: none;">
+      <div class="glass" style="max-width: 680px; margin: 0 auto; padding: 1.75rem;">
+        <div class="section-title" style="margin-bottom: 1.25rem;">
+          <span>⚙️</span> Konfigurasi JioFarm & Provider API
+        </div>
+
+        <form id="settings-form" style="display: flex; flex-direction: column; gap: 1.25rem;">
+          <!-- Provider Select -->
+          <div class="form-group">
+            <label class="form-label">Pilih SMS Provider</label>
+            <select id="setting-provider" class="form-select">
+              <option value="split">⚡ Split Dual: 5SIM + GrizzlySMS (Both Concurrently)</option>
+              <option value="grizzlysms">🐻 GrizzlySMS Only (Stabil & Cepat)</option>
+              <option value="fivesim">⚡ 5SIM Only (Hemat Biaya)</option>
+            </select>
+          </div>
+
+          <!-- Grizzly API Key -->
+          <div id="group-grizzly" class="form-group">
+            <label class="form-label">GrizzlySMS API Key</label>
+            <input type="password" id="setting-grizzly-key" class="form-input" placeholder="Masukkan API Key GrizzlySMS...">
+            <div style="font-size: 0.75rem; color: var(--text-dim);">Dapat dilihat di dashboard grizzlysms.com. Produk: <code>jio</code></div>
+          </div>
+
+          <!-- 5SIM API Key -->
+          <div id="group-fivesim" class="form-group" style="display: none;">
+            <label class="form-label">5SIM API Token (JWT)</label>
+            <input type="password" id="setting-fivesim-key" class="form-input" placeholder="Masukkan JWT Token 5SIM...">
+            <div style="font-size: 0.75rem; color: var(--text-dim);">Dapat dilihat di dashboard 5sim.net. Produk: <code>jiomart</code></div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+              <label class="form-label">Default Max Price ($)</label>
+              <input type="number" id="setting-max-price" class="form-input" step="0.05" min="0.1" value="1.0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Default Concurrency</label>
+              <input type="number" id="setting-concurrency" class="form-input" min="1" max="10" value="2">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+              <label class="form-label">Cancel Delay (Detik)</label>
+              <input type="number" id="setting-cancel-delay" class="form-input" value="150">
+            </div>
+            <div class="form-group">
+              <label class="form-label">OTP Fail Delay (Detik)</label>
+              <input type="number" id="setting-otp-fail-delay" class="form-input" value="420">
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 0.5rem 0;">
+
+          <!-- Telegram Bot Integration -->
+          <div class="section-title" style="font-size: 0.95rem;">
+            <span>🔔</span> Notifikasi Telegram (Opsional)
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Telegram Bot Token</label>
+            <input type="text" id="setting-tg-token" class="form-input" placeholder="Contoh: 123456789:ABCdefGHIjkl...">
+            <div style="font-size: 0.75rem; color: var(--text-dim);">Didapatkan dari @BotFather di Telegram</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Telegram Chat ID</label>
+            <input type="text" id="setting-tg-chat" class="form-input" placeholder="Contoh: -1001234567 atau 987654321">
+            <div style="font-size: 0.75rem; color: var(--text-dim);">Didapatkan dari @userinfobot di Telegram</div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem;">
+            <button type="button" id="btn-test-tg" class="btn btn-secondary btn-sm">
+              ✈️ Test Kirim Pesan Telegram
+            </button>
+          </div>
+
+          <div style="margin-top: 1rem;">
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.8rem;">
+              💾 Simpan Pengaturan ke .env
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

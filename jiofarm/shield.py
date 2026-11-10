@@ -10,14 +10,13 @@ import json
 import socket
 import urllib.request
 
-_DOH_CACHE: str | None = None
-_GRIZZLY_HOST = "api.grizzlysms.com"
+_DOH_CACHE: dict[str, str] = {}
+_PROTECTED_HOSTS = {"api.grizzlysms.com", "5sim.net"}
 
 
 def _doh_resolve(host: str) -> str | None:
-    global _DOH_CACHE
-    if _DOH_CACHE:
-        return _DOH_CACHE
+    if host in _DOH_CACHE:
+        return _DOH_CACHE[host]
     try:
         req = urllib.request.Request(
             f"https://1.1.1.1/dns-query?name={host}&type=A",
@@ -26,19 +25,19 @@ def _doh_resolve(host: str) -> str | None:
         with urllib.request.urlopen(req, timeout=5) as r:
             for ans in json.loads(r.read().decode()).get("Answer", []):
                 if ans.get("type") == 1:
-                    _DOH_CACHE = ans["data"]
-                    return _DOH_CACHE
+                    _DOH_CACHE[host] = ans["data"]
+                    return _DOH_CACHE[host]
     except Exception:
         pass
     return None
 
 
 def install_doh_shield() -> None:
-    """Patch socket.getaddrinfo to resolve api.grizzlysms.com via DoH."""
+    """Patch socket.getaddrinfo to resolve protected SMS hosts via DoH."""
     orig = socket.getaddrinfo
 
     def patched(host, port, *a, **kw):
-        if host == _GRIZZLY_HOST:
+        if host in _PROTECTED_HOSTS:
             ip = _doh_resolve(host)
             if ip:
                 return orig(ip, port, *a, **kw)

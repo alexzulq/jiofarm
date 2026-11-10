@@ -61,6 +61,13 @@ class GrizzlySMS:
         if out.startswith("ACCESS_NUMBER:"):
             _, act_id, phone = out.split(":", 2)
             return act_id, phone
+        if out.startswith("WRONG_MAX_PRICE:"):
+            min_cost = out.split(":", 1)[1]
+            try:
+                min_cost_f = float(min_cost)
+                raise GrizzlyError(f"Harga GrizzlySMS (${min_cost_f:.2f}) melebihi limit max-price (${max_price:.2f})")
+            except ValueError:
+                pass
         raise GrizzlyError(out)
 
     def status(self, act_id: str) -> tuple[str, str | None]:

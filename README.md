@@ -65,27 +65,30 @@ JioFarm sudah include client untuk 2 provider:
 
 | Provider | Status | Produk | Harga Estimasi | Catatan |
 |---|---|---|---|---|
+| **Split Dual** | ⚡ **Active** | `both` | Hybrid | Menjalankan GrizzlySMS & 5SIM bersamaan (Worker #1, #3 on 5SIM; Worker #2, #4 on Grizzly) |
 | **GrizzlySMS** | ✅ Ready | `jio` | $0.20–$1.00 | Stabil, OTP reliable, API simpel |
-| **5SIM** | ⚠️ Partial | `jiomart` | ~$0.05 | Client sudah siap, tapi API buy untuk jiomart sering "no free phones" meskipun stok web ada |
+| **5SIM** | ✅ Ready | `jiomart` | ~$0.05 | Sangat murah, token JWT |
 
-### 🔄 Cara Ganti Provider
+### 🔄 Cara Ganti Provider & Jalankan Keduanya (Split Dual)
 
-Cukup edit `.env`:
+Cukup edit `.env` atau atur lewat **Web Dashboard**:
 
 ```env
-# Pilih provider: grizzlysms, fivesim
-PROVIDER=grizzlysms
+# Pilih provider: split (keduanya), grizzlysms, atau fivesim
+PROVIDER=split
 
-# GrizzlySMS
+# Masukkan kedua API Key
 GRIZZLY_API_KEY=key_kamu_disini
-
-# 5SIM (kalau pakai PROVIDER=fivesim)
 FIVESIM_API_KEY=token_jwt_kamu_disini
 ```
 
-Jalankan seperti biasa — nggak perlu ubah command apapun:
+Jalankan lewat Web Dashboard:
 ```bash
-python -m jiofarm run --max-price 0.5
+python -m jiofarm web
+```
+Atau lewat terminal CLI:
+```bash
+python -m jiofarm run --concurrency 4 --max-price 0.5
 ```
 
 ### 🧩 Arsitektur Multi-Provider
@@ -228,7 +231,15 @@ CONCURRENCY=2
 
 ## 🎮 Cara Pakai
 
-### Interactive Menu (rekomendasi)
+### Web Dashboard (Paling Mudah 🌟)
+
+Jalankan server web dan buka control center di browser:
+```bash
+python -m jiofarm web
+```
+Akses dashboard di browser pada `http://localhost:8000` untuk kontrol visual, live telemetry worker, dan links vault.
+
+### Interactive Menu
 
 ```bash
 python -m jiofarm
@@ -241,7 +252,8 @@ Tampil menu pilihan:
 │ Panen link redeem Gemini Pro dari Jio│
 └──────────────────────────────────────┘
 
-  1   Run Hunter
+  0   Launch Web Dashboard (Rekomendasi 🌟)
+  1   Run Hunter (Terminal Rich)
   2   Check Balance
   3   View Stats
   4   Export Links

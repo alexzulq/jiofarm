@@ -20,7 +20,7 @@ from rich.text import Text
 from jiofarm.config import Config, load_config
 from jiofarm.console import console
 from jiofarm.grizzly.refund import RefundWorker
-from jiofarm.hunter import Phase, SMSProvider, WorkerState, create_provider, hunt_once
+from jiofarm.hunter import Phase, SMSProvider, WorkerState, create_provider, create_providers, hunt_once
 from jiofarm.shield import install_doh_shield
 from jiofarm.storage.store import Store
 
@@ -126,6 +126,7 @@ def _build_layout(
         header_style="bold cyan",
     )
     wt.add_column("W", style="dim", width=3)
+    wt.add_column("Prov", width=8)
     wt.add_column("Phase", width=12)
     wt.add_column("Phone", width=14)
     wt.add_column("Status", width=28)
@@ -152,6 +153,7 @@ def _build_layout(
         phone = w.phone if w.phone else "-"
         wt.add_row(
             str(w.wid),
+            f"[cyan]{w.provider_name}[/]" if w.provider_name else "-",
             f"[{_phase_color(w.phase)}]{_phase_icon(w.phase)} {w.phase.name}[/]",
             phone,
             status,
@@ -218,19 +220,26 @@ def run(
         cfg.duration = _parse_duration(duration)
 
     install_doh_shield()
-    provider = create_provider(cfg)
+    prov_map = create_providers(cfg)
+    prov_keys = list(prov_map.keys())
+    primary_provider = prov_map[prov_keys[0]]
     store = Store(cfg.db_path)
-    refunds = RefundWorker(provider, log=lambda msg: console.log(f"[dim]♻ {msg}[/]"))
+    refunds = RefundWorker(primary_provider, log=lambda msg: console.log(f"[dim]♻ {msg}[/]"))
 
     # initial balance
-    try:
-        bal = provider.balance()
-        console.print(f"💰 Saldo ({cfg.provider}): [success]${bal:,.2f}[/]")
-    except Exception:
-        console.print("[warning]Tidak bisa cek saldo[/]")
+    for p_name, p_inst in prov_map.items():
+        try:
+            bal = p_inst.balance()
+            console.print(f"💰 Saldo ({p_name}): [success]${bal:,.2f}[/]")
+        except Exception:
+            console.print(f"[warning]Tidak bisa cek saldo ({p_name})[/]")
 
     workers_count = cfg.effective_concurrency
-    workers = [WorkerState(wid=i + 1) for i in range(workers_count)]
+    workers = []
+    for i in range(workers_count):
+        p_name = prov_keys[i % len(prov_keys)]
+        workers.append(WorkerState(wid=i + 1, provider_name=p_name))
+
     slots = threading.Semaphore(workers_count)
     found: list[str] = []
     done_count = [0]
@@ -251,13 +260,14 @@ def run(
         return False
 
     def job(ws: WorkerState, mode_count: bool) -> None:
+        worker_prov = prov_map.get(ws.provider_name, primary_provider)
         while not hit_stop():
             with lock:
                 if mode_count and done_count[0] >= (count or 1):
                     return
                 done_count[0] += 1
             try:
-                link = hunt_once(provider, store, refunds, slots, cfg, ws)
+                link = hunt_once(worker_prov, store, refunds, slots, cfg, ws)
             except Exception as e:
                 ws.phase = Phase.ERROR
                 ws.error = str(e)
@@ -330,6 +340,17 @@ def run(
 
 
 @app.command()
+def web(
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Bind host"),
+    port: int = typer.Option(8000, "--port", "-p", help="Bind port"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Buka browser otomatis"),
+) -> None:
+    """Buka Live Web Dashboard JioFarm di browser."""
+    from jiofarm.web.server import run_server
+    run_server(host=host, port=port, open_browser=open_browser)
+
+
+@app.command()
 def links(
     out: Optional[str] = typer.Option(None, "--out", help="Ekspor ke file txt"),
     db: str = typer.Option("results.db", "--db", help="Path database SQLite"),
@@ -389,7 +410,8 @@ def main_callback(
     table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
     table.add_column("", style="bold cyan", width=4)
     table.add_column("")
-    table.add_row("1", "Run Hunter")
+    table.add_row("0", "[bold green]Launch Web Dashboard[/] [dim](Rekomendasi 🌟)[/]")
+    table.add_row("1", "Run Hunter (Terminal Rich)")
     table.add_row("2", "Check Balance")
     table.add_row("3", "View Stats")
     table.add_row("4", "Export Links")
@@ -397,9 +419,13 @@ def main_callback(
     console.print(table)
     console.print()
 
-    choice = Prompt.ask("[bold]Pilih menu[/]", choices=["1", "2", "3", "4", "5"], default="1")
+    choice = Prompt.ask("[bold]Pilih menu[/]", choices=["0", "1", "2", "3", "4", "5"], default="0")
 
-    if choice == "1":
+    if choice == "0":
+        from jiofarm.web.server import run_server
+        run_server()
+
+    elif choice == "1":
         # interactive run setup
         console.print()
         mp = Prompt.ask("  Max price per nomor (USD)", default="1.0")

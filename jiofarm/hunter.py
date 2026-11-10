@@ -84,6 +84,7 @@ class Phase(Enum):
 @dataclass
 class WorkerState:
     wid: int
+    provider_name: str = ""
     phase: Phase = Phase.IDLE
     phone: str = ""
     act_id: str = ""
@@ -128,7 +129,7 @@ def hunt_once(
         if not jio_check_subscriber(state.phone):
             state.phase = Phase.ERROR
             state.error = "bukan pelanggan Jio"
-            refunds.schedule(state.act_id, 120, aggressive=True)
+            refunds.schedule(state.act_id, 120, aggressive=True, sms_client=provider)
             return None
 
         # 3) create Jio session --------------------------------------------
@@ -148,7 +149,7 @@ def hunt_once(
         if not jio_send_otp(s, state.phone):
             state.phase = Phase.ERROR
             state.error = "OTP gagal dikirim"
-            refunds.schedule(state.act_id, cfg.otp_fail_delay)
+            refunds.schedule(state.act_id, cfg.otp_fail_delay, sms_client=provider)
             return None
 
         provider.ready(state.act_id)
@@ -162,7 +163,7 @@ def hunt_once(
         if not jio_validate_otp(s, state.otp):
             state.phase = Phase.ERROR
             state.error = "OTP invalid"
-            refunds.schedule(state.act_id, cfg.cancel_delay)
+            refunds.schedule(state.act_id, cfg.cancel_delay, sms_client=provider)
             return None
 
         state.logged_in = True
@@ -192,7 +193,7 @@ def hunt_once(
         state.phase = Phase.ERROR
         state.error = str(e)
         if state.act_id:
-            refunds.schedule(state.act_id, cfg.cancel_delay)
+            refunds.schedule(state.act_id, cfg.cancel_delay, sms_client=provider)
         return None
     finally:
         store.save(state.phone, state.act_id, state.otp, state.logged_in, state.link)
@@ -208,10 +209,38 @@ def create_provider(cfg: Config) -> SMSProvider:
     if cfg.provider == "grizzlysms":
         from jiofarm.grizzly.client import GrizzlySMS
 
-        return GrizzlySMS(cfg.api_key)  # type: ignore[return-value]
+        return GrizzlySMS(cfg.grizzly_api_key or cfg.api_key)  # type: ignore[return-value]
     elif cfg.provider == "fivesim":
         from jiofarm.fivesim.client import FiveSim
 
-        return FiveSim(cfg.api_key)  # type: ignore[return-value]
+        return FiveSim(cfg.fivesim_api_key or cfg.api_key)  # type: ignore[return-value]
+    elif cfg.provider in ("split", "both", "dual"):
+        from jiofarm.grizzly.client import GrizzlySMS
+        from jiofarm.fivesim.client import FiveSim
+
+        if cfg.has_fivesim:
+            return FiveSim(cfg.fivesim_api_key)  # type: ignore[return-value]
+        elif cfg.has_grizzly:
+            return GrizzlySMS(cfg.grizzly_api_key)  # type: ignore[return-value]
+        raise SystemExit("Split mode: belum ada API key yang valid untuk 5SIM maupun GrizzlySMS")
     else:
         raise SystemExit(f"Provider tidak dikenal: {cfg.provider}")
+
+
+def create_providers(cfg: Config) -> dict[str, SMSProvider]:
+    """Create active provider instances mapped by name ('5SIM', 'GRIZZLY')."""
+    providers: dict[str, SMSProvider] = {}
+    if cfg.provider in ("split", "both", "dual"):
+        if cfg.has_fivesim:
+            from jiofarm.fivesim.client import FiveSim
+            providers["5SIM"] = FiveSim(cfg.fivesim_api_key)  # type: ignore[assignment]
+        if cfg.has_grizzly:
+            from jiofarm.grizzly.client import GrizzlySMS
+            providers["GRIZZLY"] = GrizzlySMS(cfg.grizzly_api_key)  # type: ignore[assignment]
+    elif cfg.provider == "fivesim":
+        from jiofarm.fivesim.client import FiveSim
+        providers["5SIM"] = FiveSim(cfg.fivesim_api_key or cfg.api_key)  # type: ignore[assignment]
+    else:
+        from jiofarm.grizzly.client import GrizzlySMS
+        providers["GRIZZLY"] = GrizzlySMS(cfg.grizzly_api_key or cfg.api_key)  # type: ignore[assignment]
+    return providers

@@ -18,16 +18,52 @@ def _find_env() -> Path:
     return Path(".env")
 
 
-def load_config() -> "Config":
+def save_env_config(updates: dict[str, str]) -> Path:
+    """Save or update key-values in .env file."""
+    env_path = _find_env()
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    elif Path(".env.example").exists():
+        lines = Path(".env.example").read_text(encoding="utf-8").splitlines()
+
+    updated_keys = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}")
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+
+    for key, val in updates.items():
+        if key not in updated_keys:
+            new_lines.append(f"{key}={val}")
+
+    target_path = Path.cwd() / ".env" if not env_path.exists() else env_path
+    target_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    load_dotenv(target_path, override=True)
+    return target_path
+
+
+def load_config(strict: bool = True) -> "Config":
     """Load .env and return a populated Config instance."""
     env_path = _find_env()
-    load_dotenv(env_path)
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
 
     provider = os.getenv("PROVIDER", "grizzlysms").strip().lower()
+    grizzly_api_key = os.getenv("GRIZZLY_API_KEY", "").strip()
+    fivesim_api_key = os.getenv("FIVESIM_API_KEY", "").strip()
+    grizzly_product = os.getenv("GRIZZLY_PRODUCT", "jio").strip()
+    fivesim_product = os.getenv("FIVESIM_PRODUCT", "jiomart").strip()
 
     if provider == "grizzlysms":
-        api_key = os.getenv("GRIZZLY_API_KEY", "").strip()
-        if not api_key or api_key == "your_api_key_here":
+        api_key = grizzly_api_key
+        if strict and (not api_key or api_key == "your_api_key_here"):
             msg = (
                 "GRIZZLY_API_KEY belum diset di .env\n"
                 "  1. Buka https://grizzlysms.com — daftar & topup\n"
@@ -35,10 +71,10 @@ def load_config() -> "Config":
                 "  3. Paste ke .env: GRIZZLY_API_KEY=xxxx"
             )
             raise SystemExit(msg)
-        product = os.getenv("GRIZZLY_PRODUCT", "jio").strip()
+        product = grizzly_product
     elif provider == "fivesim":
-        api_key = os.getenv("FIVESIM_API_KEY", "").strip()
-        if not api_key or api_key == "your_api_key_here":
+        api_key = fivesim_api_key
+        if strict and (not api_key or api_key == "your_api_key_here"):
             msg = (
                 "FIVESIM_API_KEY belum diset di .env\n"
                 "  1. Buka https://5sim.net — daftar & topup\n"
@@ -46,13 +82,28 @@ def load_config() -> "Config":
                 "  3. Paste ke .env: FIVESIM_API_KEY=xxxx"
             )
             raise SystemExit(msg)
-        product = os.getenv("FIVESIM_PRODUCT", "jiomart").strip()
+        product = fivesim_product
+    elif provider in ("split", "both", "dual"):
+        api_key = grizzly_api_key or fivesim_api_key
+        product = "jio"
+        if strict:
+            has_g = bool(grizzly_api_key and grizzly_api_key != "your_api_key_here")
+            has_5 = bool(fivesim_api_key and fivesim_api_key != "your_api_key_here")
+            if not has_g and not has_5:
+                raise SystemExit("PROVIDER=split memerlukan minimal salah satu atau kedua API Key (GRIZZLY_API_KEY dan FIVESIM_API_KEY)!")
     else:
-        raise SystemExit(f"PROVIDER tidak dikenal: '{provider}'. Pilih: grizzlysms, fivesim")
+        if strict:
+            raise SystemExit(f"PROVIDER tidak dikenal: '{provider}'. Pilih: grizzlysms, fivesim, split")
+        api_key = ""
+        product = "jio"
 
     return Config(
         provider=provider,
         api_key=api_key,
+        grizzly_api_key=grizzly_api_key,
+        fivesim_api_key=fivesim_api_key,
+        grizzly_product=grizzly_product,
+        fivesim_product=fivesim_product,
         product=product,
         max_price=float(os.getenv("MAX_PRICE", "1.0")),
         cancel_delay=float(os.getenv("CANCEL_DELAY_SECONDS", "150")),
@@ -70,6 +121,10 @@ class Config:
 
     provider: str = "grizzlysms"
     api_key: str = ""
+    grizzly_api_key: str = ""
+    fivesim_api_key: str = ""
+    grizzly_product: str = "jio"
+    fivesim_product: str = "jiomart"
     product: str = "jio"  # GrizzlySMS: "jio", 5SIM: "jiomart"
     max_price: float = 1.0
     cancel_delay: float = 150.0
@@ -101,3 +156,19 @@ class Config:
     @property
     def telegram_enabled(self) -> bool:
         return bool(self.tg_bot_token and self.tg_chat_id)
+
+    @property
+    def has_grizzly(self) -> bool:
+        return bool(self.grizzly_api_key and self.grizzly_api_key != "your_api_key_here" and "••" not in self.grizzly_api_key)
+
+    @property
+    def has_fivesim(self) -> bool:
+        return bool(self.fivesim_api_key and self.fivesim_api_key != "your_api_key_here" and "••" not in self.fivesim_api_key)
+
+    @property
+    def is_configured(self) -> bool:
+        if self.provider in ("split", "both", "dual"):
+            return self.has_grizzly and self.has_fivesim
+        elif self.provider == "fivesim":
+            return self.has_fivesim
+        return self.has_grizzly

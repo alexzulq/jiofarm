@@ -28,25 +28,33 @@ AGGRESSIVE_INTERVAL = 30
 class RefundWorker:
     """Cancels failed activations after their lock window to reclaim balance."""
 
-    def __init__(self, sms: Cancellable, log: Callable[[str], None] | None = None):
+    def __init__(self, sms: Cancellable | None = None, log: Callable[[str], None] | None = None):
         self.sms = sms
         self.log = log or (lambda _: None)
-        self.q: "queue.Queue[tuple[str, float, bool]]" = queue.Queue()
+        self.q: "queue.Queue[tuple[str, float, bool, Cancellable | None]]" = queue.Queue()
         self.pending = 0
         self._lock = threading.Lock()
         threading.Thread(target=self._loop, daemon=True).start()
 
-    def schedule(self, act_id: str, delay: float, aggressive: bool = False) -> None:
+    def schedule(
+        self,
+        act_id: str,
+        delay: float,
+        aggressive: bool = False,
+        sms_client: Cancellable | None = None,
+    ) -> None:
         """Schedule a refund.
 
         Args:
             act_id: The activation ID to cancel.
             delay: Seconds to wait before first cancel attempt.
             aggressive: If True, try every 30s; if False, wait full delay once.
+            sms_client: Specific SMS provider client to cancel on (default: self.sms).
         """
         with self._lock:
             self.pending += 1
-        self.q.put((act_id, time.time() + delay, aggressive))
+        client = sms_client or self.sms
+        self.q.put((act_id, time.time() + delay, aggressive, client))
         mode = "aggressive" if aggressive else "normal"
         self.log(f"refund #{act_id[-8:]} dijadwalkan ({mode}, {int(delay)}s)")
 
@@ -54,18 +62,21 @@ class RefundWorker:
         while True:
             time.sleep(2)
             due_now = time.time()
-            batch: list[tuple[str, float, bool]] = []
+            batch: list[tuple[str, float, bool, Cancellable | None]] = []
             while True:
                 try:
                     batch.append(self.q.get_nowait())
                 except queue.Empty:
                     break
 
-            remaining: list[tuple[str, float, bool]] = []
-            for act_id, fire_at, aggressive in batch:
+            remaining: list[tuple[str, float, bool, Cancellable | None]] = []
+            for act_id, fire_at, aggressive, client in batch:
                 if due_now >= fire_at:
+                    active_sms = client or self.sms
                     try:
-                        self.sms.cancel(act_id)
+                        if active_sms is None:
+                            raise ValueError("Tidak ada client SMS yang diset untuk refund")
+                        active_sms.cancel(act_id)
                         self.log(f"refund #{act_id[-8:]} berhasil ✓")
                         with self._lock:
                             self.pending -= 1
@@ -74,9 +85,9 @@ class RefundWorker:
                         # retry: aggressive = every 30s, normal = every 10s
                         retry_delay = AGGRESSIVE_INTERVAL if aggressive else 10
                         self.log(f"refund #{act_id[-8:]} gagal: {err} — retry {int(retry_delay)}s")
-                        remaining.append((act_id, time.time() + retry_delay, aggressive))
+                        remaining.append((act_id, time.time() + retry_delay, aggressive, client))
                 else:
-                    remaining.append((act_id, fire_at, aggressive))
+                    remaining.append((act_id, fire_at, aggressive, client))
 
             for item in remaining:
                 self.q.put(item)
